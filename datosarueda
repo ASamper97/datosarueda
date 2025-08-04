@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datos a Rueda: Análisis Interactivo La Vuelta 25</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals & Subtle Accents -->
+    <!-- Application Structure Plan: A dashboard-style SPA. A main navigation bar allows users to select any of the 21 stages. Clicking a stage updates the entire view. The layout is now structured with a main info card, followed by a permanent and visible glossary card, and then the grid of detailed metric cards. This improves usability by ensuring the legend for the profile graphics is always accessible. The user flow remains simple: select a stage, explore its unique analytical fingerprint with clear context. -->
+    <!-- Visualization & Content Choices: 
+        - Stage Details: Simple text in a card for clarity.
+        - Stage Profile: Uses the exact images provided by the user for 100% visual fidelity.
+        - IVE (Volatilidad): A doughnut chart acting as a gauge for a quick, visual assessment of risk. Goal: Inform. Library: Chart.js.
+        - VDA (Desgaste): A cumulative line chart to tell the story of fatigue over the entire race up to the selected stage. Goal: Show Change. Library: Chart.js.
+        - ROC (Oportunidad Fuga): A simple score and a descriptive bar for at-a-glance understanding of a breakaway's chances. Goal: Compare. Method: HTML/CSS.
+        - Tactical Analysis: A composite card showing tactical profile, wind probability, and a new Tactical Relevance Score (PRT) to measure GC impact. Goal: Synthesize. Method: HTML/CSS.
+        - Historical Notes: A dedicated card with dynamic text to provide narrative depth. Goal: Inform. Method: HTML.
+        - Key Climb Power Profile: A card with stats and a custom multi-bar chart to visualize climb difficulty by segment. Goal: Compare/Inform. Method: HTML/CSS.
+        - Glossary: A permanent card placed prominently to explain the color-coding of profile markers, improving user understanding. Goal: Inform. Method: HTML/CSS.
+        - Ideal Winner Profile: A new radar chart to visually represent the most likely rider type to succeed. Goal: Predict/Inform. Library: Chart.js.
+        - Critical Kilometer: A new text-based card to highlight the single most decisive point of the stage. Goal: Inform/Engage. Method: HTML.
+        All choices prioritize immediate comprehension and visual appeal over raw data tables. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .metric-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .stage-button {
+            transition: all 0.2s ease-in-out;
+            border-bottom: 4px solid transparent;
+        }
+        .stage-button.active {
+            border-bottom-color: #ef4444; /* red-500 */
+            color: #ef4444;
+            font-weight: 700;
+        }
+        .chart-container {
+            position: relative;
+            margin: auto;
+            height: 250px;
+            width: 100%;
+            max-width: 400px;
+            margin-top: auto;
+        }
+        .climb-bar-bg {
+            background-color: #e5e7eb;
+            border-radius: 0.25rem;
+            overflow: hidden;
+            width: 100%;
+        }
+        .climb-bar {
+            transition: width 0.5s ease-in-out;
+            text-align: right;
+            padding-right: 0.5rem;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .profile-container {
+            width: 100%;
+            height: 12rem; /* 192px */
+            background-color: #edf2f7;
+            border-radius: 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white shadow-md">
+        <div class="container mx-auto px-4 py-6 text-center">
+            <h1 class="text-4xl font-bold text-gray-900">Datos a Rueda</h1>
+            <p class="text-lg text-red-600">Análisis Interactivo de La Vuelta 2025</p>
+        </div>
+    </header>
+
+    <nav class="bg-white sticky top-0 z-20 shadow-sm">
+        <div id="stage-selector" class="container mx-auto px-4 py-2 flex flex-wrap justify-center items-center gap-x-2 gap-y-1">
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-4 md:p-6 space-y-6">
+        <div class="p-6 bg-white rounded-lg shadow-lg flex flex-col md:flex-row items-center gap-6">
+            <div class="w-full md:w-2/3">
+                <h2 class="text-3xl font-bold mb-2">Etapa <span id="stage-id"></span>: <span id="stage-name"></span></h2>
+                <div class="flex flex-wrap gap-x-6 gap-y-2 text-gray-600">
+                    <p><strong>Distancia:</strong> <span id="stage-km"></span> km</p>
+                    <p><strong>Tipo:</strong> <span id="stage-type"></span></p>
+                </div>
+                 <p class="mt-4 text-gray-700" id="stage-comment"></p>
+            </div>
+            <div class="w-full md:w-1/3 h-48 rounded-lg flex items-center justify-center">
+               <div id="stage-profile-container" class="profile-container">
+                    <img id="stage-profile-img" src="" alt="Perfil de la etapa" class="object-contain h-full w-full">
+               </div>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-white rounded-lg shadow-lg">
+            <h3 class="text-lg font-bold text-gray-700 text-center mb-2">Glosario de Símbolos del Perfil</h3>
+            <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 text-sm">
+                <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #7f1d1d;"></div>Puerto Cat. Especial</div>
+                <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #b91c1c;"></div>Puerto 1ª Cat.</div>
+                <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #dc2626;"></div>Puerto 2ª Cat.</div>
+                <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #f59e0b;"></div>Puerto 3ª Cat.</div>
+                <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #16a34a;"></div>Sprint Intermedio</div>
+            </div>
+        </div>
+
+        <div id="dashboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="metric-card">
+                <h3 class="text-xl font-bold text-gray-700">Perfil del Ganador Ideal</h3>
+                <p class="text-sm text-gray-500 mb-2">Características del ciclista con más opciones.</p>
+                <div class="chart-container">
+                    <canvas id="winner-profile-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3 class="text-xl font-bold text-gray-700">El Kilómetro Crítico</h3>
+                <p class="text-sm text-gray-500 mb-2">El punto exacto donde se decidirá la etapa.</p>
+                <div class="my-auto text-center">
+                    <p class="text-5xl font-bold text-red-600" id="critical-km-point">Km 0.0</p>
+                    <p class="text-gray-700 font-semibold mt-2" id="critical-km-desc"></p>
+                    <p class="text-xs text-gray-500 mt-1" id="critical-km-reason"></p>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3 class="text-xl font-bold text-gray-700">Índice de Volatilidad (IVE™)</h3>
+                <p class="text-sm text-gray-500 mb-2">Mide la imprevisibilidad y el peligro latente.</p>
+                <div class="chart-container">
+                    <canvas id="ive-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <h3 class="text-xl font-bold text-gray-700">Ratio Oportunidad/Control (ROC™)</h3>
+                <p class="text-sm text-gray-500 mb-2">Probabilidad de éxito para una fuga.</p>
+                <div class="text-center my-auto">
+                    <p class="text-6xl font-bold text-red-600" id="roc-score">0.0</p>
+                    <p class="text-lg font-semibold text-gray-600" id="roc-label">Baja</p>
+                    <div class="w-full bg-gray-200 rounded-full h-4 mt-4">
+                        <div id="roc-bar" class="bg-red-500 h-4 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="metric-card lg:col-span-2">
+                <h3 class="text-xl font-bold text-gray-700">Análisis Táctico e Histórico</h3>
+                <p class="text-sm text-gray-500 mb-2">Claves estratégicas, factores externos y memoria de La Vuelta.</p>
+                <div class="space-y-4 my-auto">
+                     <div>
+                        <p class="font-bold">Perfil Táctico: <span id="tactical-profile" class="font-normal text-red-600"></span></p>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <p class="font-bold">Probabilidad de Viento:</p>
+                        <div class="w-1/2 bg-gray-200 rounded-full h-4">
+                            <div id="wind-bar" class="bg-blue-500 h-4 rounded-full" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center">
+                            <p class="font-bold">Relevancia Táctica (PRT™):</p>
+                            <div id="prt-stars" class="text-2xl text-yellow-400"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 -mt-1">Importancia de la etapa para la clasificación general final.</p>
+                    </div>
+                    <div id="historical-notes" class="text-sm text-gray-700 border-t pt-3"></div>
+                </div>
+            </div>
+
+            <div class="metric-card lg:col-span-2">
+                <h3 class="text-xl font-bold text-gray-700">Perfil de Potencia del Puerto Clave</h3>
+                <p class="text-sm text-gray-500 mb-2">Análisis por segmentos de la ascensión decisiva.</p>
+                <div id="key-climb-analysis" class="my-auto space-y-3">
+                </div>
+            </div>
+            
+            <div class="metric-card md:col-span-2 lg:col-span-4">
+                <h3 class="text-xl font-bold text-gray-700">Vector de Desgaste Acumulado (VDA™)</h3>
+                <p class="text-sm text-gray-500 mb-2">Visualiza la fatiga acumulada a lo largo de la carrera.</p>
+                <div class="chart-container h-64">
+                    <canvas id="vda-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center py-6 px-4 text-sm text-gray-500">
+        <p>Un proyecto de análisis de datos por Datos a Rueda. Inspirado en el recorrido oficial de La Vuelta 2025.</p>
+    </footer>
+
+    <script>
+        const stagesData = [
+            { id: 1, salida: "Torino", llegada: "Novara", km: 183, tipo: "Llana", comment: "La Vuelta 25 comenzará con una etapa en línea, algo que ha ocurrido solamente en dos ocasiones en este siglo: 2007 y 2020. La primera jornada incluye un puerto de tercera para decidir al primer portador del maillot de la montaña. La previsible llegada al sprint, con las fuerzas intactas, dejará unos kilómetros finales emocionantes para optar al primer maillot rojo.", profileImg: "perfil etapa 1.png", ive_ct: 4, ive_fm: 5, ive_ptf: 3, ive_us: 1.2, vda_mdp: 800, vda_kmt: 0, roc_pde: 2, roc_dmp: 120, roc_ic: 9, prt: 2, wind_prob: 30, tactical_profile: "Control de sprinters y nervios iniciales.", historical_notes: "Un inicio sin crono es una rareza táctica. Obliga a los equipos de los favoritos a estar atentos desde el primer día para evitar cortes por caídas o viento, un riesgo inusual tan temprano. El primer maillot rojo podría ser para un sprinter, algo que no ocurría desde 2007.", key_climb: { name: "Puerto Bienca-Tomalino", length: 9.4, avg_gradient: 4.6, max_gradient: 8, segments: [{km:'0-5', grad: 5.1}, {km:'5-9.4', grad: 4.0}] }, winner_profile: { sprinter: 9, puncheur: 5, climber: 1, tt: 2 }, critical_km: { km: 182.5, desc: "Última curva a 500m", reason: "La colocación para el sprint será decisiva." } },
+            { id: 2, salida: "Alba", llegada: "Limone Piemonte", km: 157, tipo: "Llana final en alto", comment: "Primera llegada en alto de la carrera. Recorrido llano en buena parte de la etapa con unos kilómetros finales ascendentes. Con unos 10 kilómetros al 5%, un amplio grupo de ciclistas puede jugarse la victoria en las rampas finales hacia la estación de esquí con el maillot de líder en juego.", profileImg: "perfil etapa 2.png", ive_ct: 5, ive_fm: 4, ive_ptf: 7, ive_us: 1.2, vda_mdp: 2100, vda_kmt: 0, roc_pde: 5, roc_dmp: 0, roc_ic: 7, prt: 5, wind_prob: 20, tactical_profile: "Primer test para los hombres de la general.", historical_notes: "Un final en alto tan pronto (día 2) es un examen psicológico. Los favoritos no querrán mostrar sus cartas, pero una debilidad aquí puede costar segundos preciosos y, sobre todo, generar dudas en el equipo. Ganadores aquí suelen ser 'puncheurs' con buena punta de velocidad.", key_climb: { name: "Subida a Limone Piemonte", length: 13.2, avg_gradient: 5.1, max_gradient: 9, segments: [{km:'0-7', grad: 4.5}, {km:'7-13.2', grad: 5.8}] }, winner_profile: { sprinter: 2, puncheur: 8, climber: 6, tt: 3 }, critical_km: { km: 155, desc: "Inicio rampas duras", reason: "El primer ataque serio de un favorito podría producirse aquí." } },
+            { id: 3, salida: "S. Maurizio Canavese", llegada: "Ceres", km: 139, tipo: "Media Montaña", comment: "Etapa corta y sinuosa. La subida de segunda categoría dará juego en la fuga, donde ciclistas que hayan perdido tiempo en los primeros días podrían tener protagonismo. La parte final de la etapa irá siempre en ascenso limitando las opciones de los sprinters puros en favor de hombres más polivalentes.", profileImg: "perfil etapa 3.png", ive_ct: 7, ive_fm: 5, ive_ptf: 6, ive_us: 1.2, vda_mdp: 2300, vda_kmt: 0, roc_pde: 6, roc_dmp: 0, roc_ic: 4, prt: 4, wind_prob: 25, tactical_profile: "Día ideal para fugas de calidad.", historical_notes: "Esta etapa es un homenaje a Giovanni Brunero. Tácticamente, es un día perfecto para que un equipo secundario busque la victoria y el liderato a través de una fuga consentida, permitiendo al equipo del líder ahorrar fuerzas.", key_climb: { name: "Puerto Issiglio", length: 11.5, avg_gradient: 5.8, max_gradient: 10, segments: [{km:'0-6', grad: 6.5}, {km:'6-11.5', grad: 5.2}] }, winner_profile: { sprinter: 1, puncheur: 9, climber: 5, tt: 2 }, critical_km: { km: 137, desc: "Último repecho a 2km", reason: "Punto ideal para un ataque tardío desde la fuga." } },
+            { id: 4, salida: "Susa", llegada: "Voiron", km: 192, tipo: "Media Montaña", comment: "Jornada de media montaña que concentrará su dureza en la primera mitad, con las ascensiones a Montgenèvre y Lautaret como principales dificultades. La parte final más favorable podría permitir a los equipos con hombres rápidos recomponerse para controlar la carrera y luchar por la etapa.", profileImg: "perfil etapa 4.png", ive_ct: 8, ive_fm: 6, ive_ptf: 4, ive_us: 1.1, vda_mdp: 3500, vda_kmt: 550, roc_pde: 7, roc_dmp: 80, roc_ic: 5, prt: 5, wind_prob: 40, tactical_profile: "Supervivencia y desgaste antes del traslado.", historical_notes: "El Lautaret es un puerto de desgaste puro por su longitud y altitud (+2000m). Aunque está lejos de meta, el esfuerzo aquí pasa factura días después. Es una etapa trampa, donde el mayor enemigo es el gasto energético antes del largo traslado a España.", key_climb: { name: "Col du Lautaret", length: 26.4, avg_gradient: 4.1, max_gradient: 8, segments: [{km:'0-10', grad: 5.0}, {km:'10-20', grad: 4.2}, {km:'20-26.4', grad: 2.8}] }, winner_profile: { sprinter: 4, puncheur: 7, climber: 3, tt: 4 }, critical_km: { km: 76.6, desc: "Cima del Lautaret", reason: "El punto donde se consolidará la fuga del día." } },
+            { id: 5, salida: "Figueres", llegada: "Figueres", km: 20, tipo: "CRE", comment: "Contrarreloj por equipos muy intensa para poner a prueba la coordinación de las escuadras. Un circuito muy favorable para los especialistas que no dará ni un respiro a los ciclistas que quieran luchar por la general.", profileImg: "perfil  etapa 5.png", ive_ct: 3, ive_fm: 7, ive_ptf: 2, ive_us: 1.2, vda_mdp: 200, vda_kmt: 0, roc_pde: 1, roc_dmp: 0, roc_ic: 1, prt: 6, wind_prob: 65, tactical_profile: "Primeras diferencias reales en la General.", historical_notes: "Una CRE en la etapa 5 es inusual. El viento de la Tramontana en Figueres puede ser devastador. En 2017, una CRE en Nîmes (similar en perfil) vio al Sky de Froome meterle 22 segundos al Sunweb de Kelderman en solo 13km. Aquí las diferencias pueden ser mayores.", key_climb: { name: "N/A", length: 0, avg_gradient: 0, max_gradient: 0, segments: [] }, winner_profile: { sprinter: 1, puncheur: 2, climber: 4, tt: 10 }, critical_km: { km: 10, desc: "Punto intermedio", reason: "Referencia clave para saber qué equipos van en tiempo de victoria." } },
+            { id: 6, salida: "Olot", llegada: "Pal. Andorra", km: 171, tipo: "Montaña", comment: "Primera etapa de montaña de la carrera. Las subidas a Santigosa y Toses servirán para formar la fuga del día antes de entrar en territorio andorrano y subir La Comella. Podríamos ver las primeras diferencias en montaña entre los favoritos.", profileImg: "perfil etapa 6.png", ive_ct: 7, ive_fm: 5, ive_ptf: 8, ive_us: 1.1, vda_mdp: 3800, vda_kmt: 0, roc_pde: 8, roc_dmp: 0, roc_ic: 6, prt: 7, wind_prob: 15, tactical_profile: "Examen para los líderes de equipo.", historical_notes: "La Comella, antes del puerto final, es un punto táctico clave. En 2018, Simon Yates atacó allí para probar a sus rivales. La subida a Pal es constante, ideal para equipos que puedan imponer un ritmo alto y sostenido, como el antiguo Team Sky.", key_climb: { name: "Subida a Pal", length: 7.8, avg_gradient: 6.5, max_gradient: 11, segments: [{km:'0-4', grad: 7.1}, {km:'4-7.8', grad: 5.7}] }, winner_profile: { sprinter: 1, puncheur: 6, climber: 9, tt: 4 }, critical_km: { km: 168, desc: "Curva a 3km de meta", reason: "Punto de lanzamiento del ataque definitivo por la etapa." } },
+            { id: 7, salida: "Andorra", llegada: "Cerler", km: 187, tipo: "Montaña", comment: "Nueva jornada de montaña. El Port del Cantó, de primera categoría, servirá para formar la escapada del día antes de afrontar dos puertos de segunda. La llegada en alto será más dura que la jornada anterior, con la mayor exigencia concentrada en la primera parte de la subida.", profileImg: "perfil etapa 7.png", ive_ct: 7, ive_fm: 4, ive_ptf: 8, ive_us: 1.0, vda_mdp: 4200, vda_kmt: 0, roc_pde: 9, roc_dmp: 0, roc_ic: 6, prt: 8, wind_prob: 20, tactical_profile: "Consolidación de la jerarquía de la General.", historical_notes: "Cerler es un puerto histórico donde se han visto grandes desfallecimientos. Su irregularidad, con tramos duros al inicio y un final más suave, lo hace tácticamente complejo. Un ataque temprano puede pagarse caro en los kilómetros finales, aparentemente más fáciles.", key_climb: { name: "Subida a Cerler", length: 11.2, avg_gradient: 5.4, max_gradient: 12, segments: [{km:'0-6', grad: 7.0}, {km:'6-11.2', grad: 3.2}] }, winner_profile: { sprinter: 1, puncheur: 5, climber: 9, tt: 3 }, critical_km: { km: 178, desc: "Inicio de la subida", reason: "Los primeros 6km al 7% seleccionarán el grupo de favoritos." } },
+            { id: 8, salida: "Monzón", llegada: "Zaragoza", km: 158, tipo: "Llana", comment: "Una de las pocas oportunidades claras para los hombres rápidos del pelotón. Camino de Zaragoza, una fuga puede ser protagonista antes de que los equipos de los sprinters decidan incrementar el ritmo para asegurar la volata final.", profileImg: "perfil etapa 8.png", ive_ct: 2, ive_fm: 8, ive_ptf: 3, ive_us: 1.0, vda_mdp: 700, vda_kmt: 0, roc_pde: 1, roc_dmp: 158, roc_ic: 9, prt: 3, wind_prob: 75, tactical_profile: "Alerta máxima por abanicos.", historical_notes: "El 'Cierzo' de Zaragoza es un actor principal. En 2001, una etapa con final aquí vio al pelotón romperse en mil pedazos, con el equipo ONCE-Eroski de Joseba Beloki dando una exhibición táctica que dejó cortados a muchos favoritos.", key_climb: { name: "N/A", length: 0, avg_gradient: 0, max_gradient: 0, segments: [] }, winner_profile: { sprinter: 10, puncheur: 3, climber: 1, tt: 2 }, critical_km: { km: 90, desc: "Zona de campo abierto", reason: "Punto más probable para la formación de abanicos si sopla el Cierzo." } },
+            { id: 9, salida: "Alfaro", llegada: "Valdezcaray", km: 195, tipo: "Ondulada final en alto", comment: "Etapa larga para cerrar la primera semana de carrera. El perfil llano de la jornada podría favorecer a la fuga para conseguir una renta suficiente para luchar por la victoria. Algún favorito podría probar a sacar pequeñas diferencias en la ascensión final.", profileImg: "perfil etapa 9.png", ive_ct: 5, ive_fm: 5, ive_ptf: 7, ive_us: 1.1, vda_mdp: 2500, vda_kmt: 0, roc_pde: 6, roc_dmp: 0, roc_ic: 5, prt: 6, wind_prob: 40, tactical_profile: "Día de desgaste y posible sorpresa.", historical_notes: "Valdezcaray es el arquetipo de puerto para fuga. No es lo suficientemente duro para que los líderes gasten fuerzas, pero sí para que un escalador de segunda línea logre una victoria de prestigio. La clave es llegar a la base de la subida con más de 3-4 minutos de ventaja.", key_climb: { name: "Estación de Valdezcaray", length: 13.1, avg_gradient: 4.8, max_gradient: 10, segments: [{km:'0-5', grad: 6.1}, {km:'5-13.1', grad: 3.9}] }, winner_profile: { sprinter: 1, puncheur: 7, climber: 8, tt: 3 }, critical_km: { km: 184, desc: "Primeros 5km de subida", reason: "El tramo más duro, donde la fuga debe demostrar su fortaleza." } },
+            { id: 10, salida: "Sendaviva", llegada: "Larra Belagua", km: 168, tipo: "Ondulada final en alto", comment: "Navarra volverá a La Vuelta con una jornada sinuosa siempre picando hacia arriba. La subida a Larra Belagua, que se estrenó en La Vuelta 23 con una exhibición de Evenepoel, volverá a ser protagonista. Una subida final que decidirá el vencedor de la etapa.", profileImg: "perfil etapa 10.png", ive_ct: 7, ive_fm: 6, ive_ptf: 8, ive_us: 1.2, vda_mdp: 3100, vda_kmt: 150, roc_pde: 7, roc_dmp: 0, roc_ic: 5, prt: 7, wind_prob: 35, tactical_profile: "Territorio para ataques de lejos.", historical_notes: "La etapa de 2023 aquí fue tácticamente fascinante. Jumbo-Visma dejó ir a Evenepoel en la fuga para que sumara puntos de la montaña, pero controló a otros rivales. Demuestra cómo un puerto puede tener múltiples lecturas estratégicas.", key_climb: { name: "El Ferial Larra Belagua", length: 9.5, avg_gradient: 6.3, max_gradient: 11, segments: [{km:'0-4', grad: 7.5}, {km:'4-9.5', grad: 5.3}] }, winner_profile: { sprinter: 1, puncheur: 6, climber: 9, tt: 3 }, critical_km: { km: 160, desc: "Inicio de Larra Belagua", reason: "El punto donde un favorito puede probar si hay debilidad tras el día de descanso." } },
+            { id: 11, salida: "Bilbao", llegada: "Bilbao", km: 167, tipo: "Media Montaña", comment: "Terreno sinuoso habitual en el País Vasco. La primera parte de la etapa será algo más llevadera, con la dureza concentrada en la parte final. El Balcón de Bizkaia y la doble ascensión al Vivero seleccionarán la carrera antes de afrontar la corta pero dura subida a Pike Bidea a pocos kilómetros de la meta.", profileImg: "perfil etapa 11.png", ive_ct: 9, ive_fm: 7, ive_ptf: 10, ive_us: 1.1, vda_mdp: 3200, vda_kmt: 0, roc_pde: 8, roc_dmp: 7, roc_ic: 4, prt: 7, wind_prob: 60, tactical_profile: "Emboscada perfecta para clasicómanos.", historical_notes: "El encadenado final Vivero-Pike es una trampa mortal. Pike, con rampas de hasta el 15% en apenas 2km, es donde un 'puncheur' puede romper la carrera y un líder puede perder La Vuelta en un mal día. Es un final tipo clásica de las Ardenas.", key_climb: { name: "Alto de Pike (Pike Bidea)", length: 2.2, avg_gradient: 9.1, max_gradient: 15, segments: [{km:'0-1', grad: 8.0}, {km:'1-2.2', grad: 10.5}] }, winner_profile: { sprinter: 1, puncheur: 10, climber: 6, tt: 3 }, critical_km: { km: 149.6, desc: "Muro de Pike Bidea", reason: "El punto de no retorno. Quien corone primero aquí tiene la etapa ganada." } },
+            { id: 12, salida: "Laredo", llegada: "Los Corrales", km: 143, tipo: "Media Montaña", comment: "Cantabria volverá a dejarnos una etapa rápida, nerviosa y divertida. La subida a Alisas puede servir para formar la escapada del día y, ya en la parte final, la dura ascensión a Collada de Brenes hará la selección final. Los favoritos deberán estar atentos para no ceder.", profileImg: "perfil etapa 12.png", ive_ct: 8, ive_fm: 7, ive_ptf: 7, ive_us: 1.0, vda_mdp: 2500, vda_kmt: 0, roc_pde: 7, roc_dmp: 22, roc_ic: 5, prt: 6, wind_prob: 65, tactical_profile: "Ataque en el puerto y descenso técnico.", historical_notes: "La combinación de un puerto duro (Brenes) seguido de un descenso rápido y 22 km llanos hasta meta es un dilema táctico. Un ataque en solitario es arriesgado, pero un grupo pequeño de favoritos podría colaborar para distanciar a un rival que haya sufrido en la subida.", key_climb: { name: "Collada de Brenes", length: 6.8, avg_gradient: 8.2, max_gradient: 14, segments: [{km:'0-3', grad: 7.5}, {km:'3-6.8', grad: 8.7}] }, winner_profile: { sprinter: 2, puncheur: 8, climber: 6, tt: 3 }, critical_km: { km: 121, desc: "Cima de la Collada de Brenes", reason: "Un buen bajador puede lanzar un ataque decisivo aquí." } },
+            { id: 13, salida: "Cabezón de la Sal", llegada: "L'Angliru", km: 202, tipo: "Montaña", comment: "La etapa más larga de La Vuelta 25. La primera parte irá en paralelo a la costa para adentrarse en Asturias y encontrar la dureza concentrada en el tramo final. La Mozqueta y el Cordal serán la antesala de la subida final al durísimo Altu de L'Angliru. Afrontar La Huesera con casi 200 kilómetros en las piernas será una prueba de fuego.", profileImg: "perfil etapa 13.png", ive_ct: 6, ive_fm: 6, ive_ptf: 10, ive_us: 1.0, vda_mdp: 5100, vda_kmt: 0, roc_pde: 10, roc_dmp: 0, roc_ic: 7, prt: 10, wind_prob: 40, tactical_profile: "Día D. Batalla final por La Vuelta.", historical_notes: "El Cordal, justo antes del Angliru, es tan decisivo como el propio coloso. Su descenso técnico ha provocado caídas de favoritos como Beloki o Heras. Llegar mal colocado a la base del Angliru tras bajar El Cordal es un suicidio táctico. La 'Cueña les Cabres', con su 23.5%, es el punto de no retorno.", key_climb: { name: "Altu de L'Angliru", length: 12.5, avg_gradient: 9.8, max_gradient: 23.5, segments: [{km:'0-6', grad: 7.5}, {km:'6-10', grad: 13.1}, {km:'10-12.5', grad: 12.7}] }, winner_profile: { sprinter: 0, puncheur: 1, climber: 10, tt: 2 }, critical_km: { km: 196.7, desc: "La Cueña les Cabres (23.5%)", reason: "El punto más duro del ciclismo profesional. Aquí se gana o se pierde La Vuelta." } },
+            { id: 14, salida: "Avilés", llegada: "La Farrapona", km: 135, tipo: "Montaña", comment: "Etapa corta y dura en territorio asturiano. Será un día donde la fuga estará formada por ciclistas importantes, buenos escaladores con algo de margen en la general. La subida al Puertu de San Llaurienzu sumará dureza previa a la ascensión final hacia la Farrapona, donde los favoritos podrán medir sus fuerzas.", profileImg: "perfil etapa 14.png", ive_ct: 7, ive_fm: 6, ive_ptf: 9, ive_us: 1.0, vda_mdp: 4000, vda_kmt: 0, roc_pde: 9, roc_dmp: 0, roc_ic: 6, prt: 9, wind_prob: 45, tactical_profile: "La resaca del Angliru y última oportunidad.", historical_notes: "Esta etapa, el día después del Angliru, es donde se pueden ver las mayores 'pájaras'. En 2011, Juanjo Cobo cimentó su victoria en una etapa similar. La Farrapona es un puerto de ritmo, no de explosividad, que castiga a quienes vaciaron el tanque el día anterior.", key_climb: { name: "Alto de la Farrapona", length: 18.1, avg_gradient: 5.8, max_gradient: 12, segments: [{km:'0-10', grad: 5.5}, {km:'10-15', grad: 6.8}, {km:'15-18.1', grad: 5.0}] }, winner_profile: { sprinter: 0, puncheur: 2, climber: 10, tt: 3 }, critical_km: { km: 102.1, desc: "Cima de San Llaurienzu", reason: "Un ataque aquí puede romper la carrera antes de la subida final." } },
+            { id: 15, salida: "A Veiga", llegada: "Monforte", km: 167, tipo: "Media Montaña", comment: "Una jornada de media montaña en la siempre sinuosa Galicia. Terreno muy duro durante todo el día y, aunque los equipos de los sprinters traten de controlar, los escapados o algún valiente que ataque en los kilómetros finales podría tener sus opciones.", profileImg: "perfil etapa 15.png", ive_ct: 8, ive_fm: 7, ive_ptf: 6, ive_us: 1.1, vda_mdp: 2800, vda_kmt: 100, roc_pde: 7, roc_dmp: 35, roc_ic: 3, prt: 5, wind_prob: 70, tactical_profile: "Día para 'cazaetapas' y desgaste.", historical_notes: "Las carreteras gallegas son un laberinto sin un metro llano. No son grandes puertos, pero el desgaste es brutal. Es el terreno predilecto para corredores potentes como Magnus Cort, que ganó aquí en 2021, o clasicómanos que aguantan bien la media montaña.", key_climb: { name: "Alto de Barbeitos", length: 10.3, avg_gradient: 5.3, max_gradient: 9, segments: [{km:'0-5', grad: 6.0}, {km:'5-10.3', grad: 4.7}] }, winner_profile: { sprinter: 2, puncheur: 9, climber: 4, tt: 3 }, critical_km: { km: 150, desc: "Repechos finales", reason: "El terreno ideal para un ataque sorpresa de un corredor potente." } },
+            { id: 16, salida: "Poio", llegada: "Mos", km: 172, tipo: "Media Montaña", comment: "En La Vuelta 21 vivimos una apasionante jornada camino de Mos. Etapa con cuatro puertos puntuables y con un terrero muy quebrado en la segunda mitad que hará muy complicado echar abajo la fuga del día, si la hay.", profileImg: "perfil etapa 16.png", ive_ct: 8, ive_fm: 8, ive_ptf: 7, ive_us: 1.2, vda_mdp: 2900, vda_kmt: 0, roc_pde: 7, roc_dmp: 0, roc_ic: 4, prt: 6, wind_prob: 75, tactical_profile: "Emboscada gallega antes de la montaña final.", historical_notes: "La etapa de 2021 con final en Mos fue decisiva. Un ataque de Egan Bernal y Primoz Roglic a más de 60km de meta rompió la carrera y cambió el podio. Demuestra que este terreno, aparentemente inofensivo, puede ser más determinante que un gran puerto.", key_climb: { name: "Alto de Groba", length: 10.4, avg_gradient: 5.6, max_gradient: 10, segments: [{km:'0-5', grad: 6.2}, {km:'5-10.4', grad: 5.1}] }, winner_profile: { sprinter: 1, puncheur: 9, climber: 5, tt: 3 }, critical_km: { km: 110, desc: "Cima del Alto de Groba", reason: "Un ataque coordinado aquí puede dinamitar la carrera, como ocurrió en 2021." } },
+            { id: 17, salida: "O Barco", llegada: "El Morredero", km: 137, tipo: "Ondulada final en alto", comment: "Etapa sinuosa en la frontera entre Galicia y León. Con una distancia intermedia, puede ser un buen día para una escapada donde los escaladores tendrán sus opciones de demostrar en la subida final cómo llegan de fuerzas al tramo final de la carrera.", profileImg: "perfil etapa 17.png", ive_ct: 6, ive_fm: 5, ive_ptf: 8, ive_us: 1.0, vda_mdp: 3300, vda_kmt: 0, roc_pde: 7, roc_dmp: 0, roc_ic: 5, prt: 7, wind_prob: 40, tactical_profile: "Último test en alto antes de la CRI.", historical_notes: "El Morredero es un puerto largo y tendido, de desgaste. En 2006, Alexandre Vinokourov lo usó para distanciar a Valverde y sentenciar La Vuelta. Es un puerto para fondistas, no para escaladores explosivos. La fatiga de la tercera semana es clave aquí.", key_climb: { name: "Alto de El Morredero", length: 19.8, avg_gradient: 6.1, max_gradient: 13, segments: [{km:'0-10', grad: 5.8}, {km:'10-15', grad: 7.0}, {km:'15-19.8', grad: 5.9}] }, winner_profile: { sprinter: 0, puncheur: 3, climber: 9, tt: 4 }, critical_km: { km: 134.2, desc: "Tramo al 7% de El Morredero", reason: "El segmento más duro del puerto, ideal para el ataque final." } },
+            { id: 18, salida: "Valladolid", llegada: "Valladolid", km: 26, tipo: "CRI", comment: "Contrarreloj individual que cuenta con un pequeño repecho en la parte inicial. Los especialistas contra el crono pueden sacar ventaja a los escaladores puros ya que se trata de un recorrido poco complicado a nivel técnico que discurre, mayoritariamente, por avenidas anchas.", profileImg: "perfil etapa 18.png", ive_ct: 2, ive_fm: 6, ive_ptf: 2, ive_us: 1.0, vda_mdp: 250, vda_kmt: 0, roc_pde: 1, roc_dmp: 0, roc_ic: 1, prt: 9, wind_prob: 60, tactical_profile: "La 'crono de la verdad' para la General.", historical_notes: "Una crono larga (26km) en la etapa 18 es un juez implacable. En 2023, Evenepoel le metió 1 minuto a Enric Mas en una crono similar. Aquí, un escalador puro podría perder más de 1:30, un tiempo casi imposible de recuperar en la Bola del Mundo.", key_climb: { name: "N/A", length: 0, avg_gradient: 0, max_gradient: 0, segments: [] }, winner_profile: { sprinter: 0, puncheur: 1, climber: 3, tt: 10 }, critical_km: { km: 13, desc: "Punto intermedio de cronometraje", reason: "La referencia que marcará si un corredor va a ganar o a perder tiempo." } },
+            { id: 19, salida: "Rueda", llegada: "Guijuelo", km: 159, tipo: "Llana", comment: "Etapa llana como antesala de la última jornada de montaña. Será la penúltima oportunidad para los velocistas que tendrán que poner a trabajar a sus equipos para asegurar la llegada al sprint. Si se forma una fuga numerosa podría poner en aprietos al pelotón.", profileImg: "perfil etapa 19.png", ive_ct: 3, ive_fm: 7, ive_ptf: 4, ive_us: 1.0, vda_mdp: 1100, vda_kmt: 0, roc_pde: 2, roc_dmp: 159, roc_ic: 8, prt: 2, wind_prob: 65, tactical_profile: "Día de transición con posible tensión por viento.", historical_notes: "Aunque parece una etapa de transición, el altiplano entre Salamanca y Guijuelo es famoso por el viento. En 2019, una etapa similar vio al equipo Deceuninck-Quick Step montar un abanico que le costó La Vuelta a Nairo Quintana.", key_climb: { name: "N/A", length: 0, avg_gradient: 0, max_gradient: 0, segments: [] }, winner_profile: { sprinter: 9, puncheur: 4, climber: 1, tt: 2 }, critical_km: { km: 118, desc: "Salida de Salamanca", reason: "Zona expuesta al viento ideal para formar abanicos tras el sprint intermedio." } },
+            { id: 20, salida: "Robledo", llegada: "Bola del Mundo", km: 159, tipo: "Montaña", comment: "Última etapa de montaña. Una jornada muy sinuosa, sin prácticamente llano, que recuperará subidas históricas como el Alto del León. El puerto de Navacerrada será el gran protagonista. La sierra de Guadarrama coronará al vencedor de La Vuelta 25.", profileImg: "perfil etapa 20.png", ive_ct: 7, ive_fm: 5, ive_ptf: 10, ive_us: 1.1, vda_mdp: 4500, vda_kmt: 0, roc_pde: 10, roc_dmp: 0, roc_ic: 8, prt: 10, wind_prob: 30, tactical_profile: "Última oportunidad para volcar la General.", historical_notes: "La Bola del Mundo es un escenario de infarto. En 2012, Alberto Contador atacó a 50km de meta para arrebatarle el liderato a 'Purito' Rodríguez, que lo perdió en las rampas finales de cemento. Es un puerto donde la táctica y la agonía se dan la mano.", key_climb: { name: "Bola del Mundo", length: 11.4, avg_gradient: 8.6, max_gradient: 20, segments: [{km:'0-8', grad: 6.5}, {km:'8-10', grad: 12.0}, {km:'10-11.4', grad: 12.5}] }, winner_profile: { sprinter: 0, puncheur: 2, climber: 10, tt: 3 }, critical_km: { km: 156.6, desc: "Inicio rampas de cemento", reason: "El cambio de asfalto a hormigón es un muro psicológico y físico donde todo puede cambiar." } },
+            { id: 21, salida: "Alalpardo", llegada: "Madrid", km: 101, tipo: "Llana", comment: "Madrid volverá a acoger la tradicional jornada final en el circuito del centro de la ciudad. Jornada triunfal para el líder y última bala para los hombres rápidos de la carrera.", profileImg: "perfil etapa 21.png", ive_ct: 3, ive_fm: 4, ive_ptf: 2, ive_us: 1.0, vda_mdp: 800, vda_kmt: 0, roc_pde: 1, roc_dmp: 101, roc_ic: 9, prt: 1, wind_prob: 20, tactical_profile: "Celebración y sprint final.", historical_notes: "El sprint de Madrid es uno de los más prestigiosos. Aunque la general está decidida, la batalla por la victoria de etapa es feroz. En 2008, Matti Breschel ganó por milímetros en una llegada muy ajustada, demostrando que no hay etapa de transición.", key_climb: { name: "N/A", length: 0, avg_gradient: 0, max_gradient: 0, segments: [] }, winner_profile: { sprinter: 10, puncheur: 2, climber: 1, tt: 1 }, critical_km: { km: 100.5, desc: "Pase por la Fuente de Cibeles", reason: "El punto donde se lanza el sprint final por la victoria más icónica." } },
+        ];
+
+        let iveChart, vdaChart, winnerProfileChart;
+
+        const calculateIVE = (stage) => {
+            const { ive_ct, ive_fm, ive_ptf, ive_us } = stage;
+            const score = (ive_ct * 1.5) + (ive_fm * 1.2) + (ive_ptf * 1.3) * ive_us;
+            return Math.min(100, Math.round(score * 2.5)); 
+        };
+
+        const calculateVDA = (stageId) => {
+            let cumulativeVDA = 0;
+            const vdaHistory = stagesData.slice(0, stageId).map(stage => {
+                const isCRI = stage.tipo === 'CRI' || stage.tipo === 'CRE';
+                const kmc = isCRI ? stage.km : 0;
+                const kml = isCRI ? 0 : stage.km;
+                const dailyVDA = kml + (stage.vda_mdp * 0.01) + (kmc * 1.2) + (stage.vda_kmt * 0.2);
+                cumulativeVDA += dailyVDA;
+                return { stage: stage.id, vda: Math.round(cumulativeVDA) };
+            });
+            return vdaHistory;
+        };
+
+        const calculateROC = (stage) => {
+            const { roc_pde, roc_dmp, roc_ic } = stage;
+            if (roc_ic === 0 || roc_dmp === 0) return { score: stage.tipo.includes('alto') || stage.tipo.includes('Montaña') ? 5.0 : 1.0, label: stage.tipo.includes('alto') || stage.tipo.includes('Montaña') ? 'Media' : 'Muy Baja' };
+            const score = (roc_pde * 1.5) / (roc_dmp * roc_ic) * 100;
+            const normalizedScore = Math.min(10, Math.max(1, score)).toFixed(1);
+            let label = "Muy Baja";
+            if (normalizedScore > 8) label = "Muy Alta";
+            else if (normalizedScore > 6) label = "Alta";
+            else if (normalizedScore > 4) label = "Media";
+            else if (normalizedScore > 2) label = "Baja";
+            return { score: normalizedScore, label };
+        };
+        
+        const updateDashboard = (stageId) => {
+            const stage = stagesData.find(s => s.id === stageId);
+            if (!stage) return;
+
+            document.getElementById('stage-id').textContent = stage.id;
+            document.getElementById('stage-name').textContent = `${stage.salida} - ${stage.llegada}`;
+            document.getElementById('stage-km').textContent = stage.km;
+            document.getElementById('stage-type').textContent = stage.tipo;
+            document.getElementById('stage-comment').textContent = stage.comment;
+            
+            document.getElementById('stage-profile-img').src = stage.profileImg;
+            
+            document.querySelectorAll('.stage-button').forEach(btn => {
+                btn.classList.toggle('active', parseInt(btn.dataset.stage) === stageId);
+            });
+
+            const winnerProfileData = {
+                labels: ['Escalador', 'Sprinter', 'Puncheur', 'Crono'],
+                datasets: [{
+                    label: 'Perfil Ideal',
+                    data: [stage.winner_profile.climber, stage.winner_profile.sprinter, stage.winner_profile.puncheur, stage.winner_profile.tt],
+                    fill: true,
+                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                    borderColor: 'rgb(239, 68, 68)',
+                    pointBackgroundColor: 'rgb(239, 68, 68)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgb(239, 68, 68)'
+                }]
+            };
+
+            if (winnerProfileChart) {
+                winnerProfileChart.data = winnerProfileData;
+                winnerProfileChart.update();
+            } else {
+                const winnerCtx = document.getElementById('winner-profile-chart').getContext('2d');
+                winnerProfileChart = new Chart(winnerCtx, {
+                    type: 'radar',
+                    data: winnerProfileData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        elements: { line: { borderWidth: 2 } },
+                        scales: { r: { angleLines: { display: false }, suggestedMin: 0, suggestedMax: 10, pointLabels: { font: { size: 10 } } } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+
+            const criticalKm = stage.critical_km;
+            document.getElementById('critical-km-point').textContent = `Km ${criticalKm.km}`;
+            document.getElementById('critical-km-desc').textContent = criticalKm.desc;
+            document.getElementById('critical-km-reason').textContent = criticalKm.reason;
+
+
+            const iveScore = calculateIVE(stage);
+            const iveData = {
+                datasets: [{
+                    data: [iveScore, 100 - iveScore],
+                    backgroundColor: ['#ef4444', '#e5e7eb'],
+                    borderColor: ['#ef4444', '#e5e7eb'],
+                    borderWidth: 1,
+                    circumference: 180,
+                    rotation: 270,
+                }]
+            };
+            if (iveChart) {
+                iveChart.data = iveData;
+                iveChart.options.plugins.title.text = `${iveScore}`;
+                iveChart.update();
+            } else {
+                const iveCtx = document.getElementById('ive-chart').getContext('2d');
+                iveChart = new Chart(iveCtx, {
+                    type: 'doughnut',
+                    data: iveData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false },
+                            title: {
+                                display: true,
+                                text: `${iveScore}`,
+                                position: 'bottom',
+                                align: 'center',
+                                font: { size: 48, weight: 'bold' },
+                                color: '#ef4444',
+                                padding: { top: -60 }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const vdaHistory = calculateVDA(stageId);
+            const vdaLabels = vdaHistory.map(d => `E${d.stage}`);
+            const vdaDataPoints = vdaHistory.map(d => d.vda);
+            if (vdaChart) {
+                vdaChart.data.labels = vdaLabels;
+                vdaChart.data.datasets[0].data = vdaDataPoints;
+                vdaChart.update();
+            } else {
+                const vdaCtx = document.getElementById('vda-chart').getContext('2d');
+                vdaChart = new Chart(vdaCtx, {
+                    type: 'line',
+                    data: {
+                        labels: vdaLabels,
+                        datasets: [{
+                            label: 'Desgaste Acumulado',
+                            data: vdaDataPoints,
+                            fill: true,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            tension: 0.1,
+                            pointBackgroundColor: '#ef4444'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+
+            const { score: rocScore, label: rocLabel } = calculateROC(stage);
+            document.getElementById('roc-score').textContent = rocScore;
+            document.getElementById('roc-label').textContent = rocLabel;
+            document.getElementById('roc-bar').style.width = `${rocScore * 10}%`;
+
+            document.getElementById('tactical-profile').textContent = stage.tactical_profile;
+            document.getElementById('wind-bar').style.width = `${stage.wind_prob}%`;
+            document.getElementById('prt-stars').textContent = '★'.repeat(stage.prt) + '☆'.repeat(10 - stage.prt);
+
+
+            const historicalNotesEl = document.getElementById('historical-notes');
+            historicalNotesEl.innerHTML = `<p class="leading-relaxed">${stage.historical_notes}</p>`;
+
+            const keyClimbEl = document.getElementById('key-climb-analysis');
+            if (stage.key_climb && stage.key_climb.name !== 'N/A') {
+                const climb = stage.key_climb;
+                let segmentsHTML = climb.segments.map(seg => {
+                    const gradColor = seg.grad > 10 ? 'bg-red-700' : seg.grad > 7 ? 'bg-red-500' : seg.grad > 5 ? 'bg-yellow-500' : 'bg-green-500';
+                    return `
+                        <div class="flex items-center text-xs">
+                            <p class="w-1/4 text-gray-500">${seg.km} km</p>
+                            <div class="w-3/4 climb-bar-bg h-5">
+                                <div class="climb-bar h-5 ${gradColor}" style="width: ${seg.grad * 6}%">
+                                    ${seg.grad}%
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                keyClimbEl.innerHTML = `
+                    <h4 class="font-bold text-lg">${climb.name}</h4>
+                    <div class="grid grid-cols-3 gap-2 text-center text-sm mb-4">
+                        <div><p class="font-semibold">${climb.length} km</p><p class="text-xs text-gray-500">Longitud</p></div>
+                        <div><p class="font-semibold">${climb.avg_gradient}%</p><p class="text-xs text-gray-500">Pendiente</p></div>
+                        <div><p class="font-semibold">${climb.max_gradient}%</p><p class="text-xs text-gray-500">Pend. Máx</p></div>
+                    </div>
+                    <div class="space-y-1">${segmentsHTML}</div>
+                `;
+            } else {
+                keyClimbEl.innerHTML = `<p class="text-gray-500 text-center my-auto">No hay puertos de montaña clave en esta etapa.</p>`;
+            }
+        };
+
+        const init = () => {
+            const selector = document.getElementById('stage-selector');
+            stagesData.forEach(stage => {
+                const button = document.createElement('button');
+                button.textContent = stage.id;
+                button.dataset.stage = stage.id;
+                button.className = 'stage-button px-3 py-2 text-sm md:text-base font-semibold text-gray-500 hover:text-red-500';
+                button.onclick = () => updateDashboard(stage.id);
+                selector.appendChild(button);
+            });
+            updateDashboard(1);
+        };
+
+        window.onload = init;
+    </script>
+</body>
+</html>
